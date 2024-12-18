@@ -20,7 +20,7 @@ driver = webdriver.Chrome()
 wait = WebDriverWait(driver, 30)  # Increased timeout for waiting
 
 # Open the main page
-driver.get("https://www.redbus.in/travels/nbstc")
+driver.get("https://www.redbus.in/online-booking/astc/?utm_source=rtchometile")
 
 # Define a list to store all the route data
 all_data = []
@@ -28,6 +28,9 @@ all_data = []
 def scrape_page():
     """Scrapes route data from the current page."""
     try:
+        # Define the state name (you can customize this depending on the page you're scraping)
+        state_name = 'Assam-(ASTC)'
+
         # Locate route containers
         routescontainer = wait.until(EC.presence_of_all_elements_located((By.CLASS_NAME, "route_details")))
 
@@ -36,11 +39,11 @@ def scrape_page():
             try:
                 # Extract route name and link
                 route_link_element = route.find_element(By.CLASS_NAME, "route")
-                routename = route_link_element.text  # Route name is the text content
-                routelink = route_link_element.get_attribute('href')  # Route link from href attribute
+                route_name = route_link_element.text  # Route name is the text content
+                route_link = route_link_element.get_attribute('href')  # Route link from href attribute
 
-                # Append extracted data to the list
-                all_data.append({'routename': routename, 'routelink': routelink})
+                # Append extracted data to the list with state_name
+                all_data.append({'route_name': route_name, 'route_link': route_link, 'state_name': state_name})
 
             except Exception as e:
                 print(f"An error occurred while extracting route data: {e}")
@@ -112,8 +115,8 @@ def get_bus_details(route_link):
         for bus in buses_container:
             try:
                 # Extract bus details from the provided HTML structure
-                busname = bus.find_element(By.CLASS_NAME, "travels").text
-                bustype = bus.find_element(By.CLASS_NAME, "bus-type").text
+                bus_name = bus.find_element(By.CLASS_NAME, "travels").text
+                bus_type = bus.find_element(By.CLASS_NAME, "bus-type").text
                 departing_time = bus.find_element(By.CLASS_NAME, "dp-time").text
                 duration = bus.find_element(By.CLASS_NAME, "dur").text
                 reaching_time = bus.find_element(By.CLASS_NAME, "bp-time").text
@@ -156,8 +159,8 @@ def get_bus_details(route_link):
 
                 # Append the bus details to the list
                 bus_details.append({
-                    "busname": busname,
-                    "bustype": bustype,
+                    "bus_name": bus_name,
+                    "bus_type": bus_type,
                     "departing_time": departing_time,
                     "duration": duration,
                     "reaching_time": reaching_time,
@@ -178,7 +181,7 @@ def get_bus_details(route_link):
         return []
 
 def insert_bus_details(route_data):
-    """Inserts bus details into MySQL, including routename and routelink."""
+    """Inserts bus details into MySQL, including routename, routelink, and state_name."""
     connection = connect_to_db()
     cursor = connection.cursor()
 
@@ -186,13 +189,13 @@ def insert_bus_details(route_data):
     try:
         for bus in route_data['bus_details']:
             cursor.execute(""" 
-                INSERT INTO apsrtc_buses (routename, routelink, busname, bustype, departing_time, duration, reaching_time, star_rating, price, old_price, total_seats, window_seats)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (route_data['routename'], route_data['routelink'], bus['busname'], bus['bustype'], bus['departing_time'], bus['duration'], 
-                  bus['reaching_time'], bus['star_rating'], bus['price'], bus['old_price'], bus['total_seats'], bus['window_seats']))
+                INSERT INTO all_bus_routes (route_name, route_link, bus_name, bus_type, departing_time, duration, reaching_time, star_rating, price, old_price, total_seats, window_seats, state_name)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (route_data['route_name'], route_data['route_link'], bus['bus_name'], bus['bus_type'], bus['departing_time'], bus['duration'], 
+                  bus['reaching_time'], bus['star_rating'], bus['price'], bus['old_price'], bus['total_seats'], bus['window_seats'], route_data['state_name']))
         
         connection.commit()
-        print(f"Data inserted for route {route_data['routename']} and its apsrtc_buses.")
+        print(f"Data inserted for route {route_data['route_name']} and its all_bus_routes.")
 
     except Exception as e:
         print(f"An error occurred while inserting data into MySQL: {e}")
@@ -201,16 +204,17 @@ def insert_bus_details(route_data):
         connection.close()
 
 # Scrape data from the first 5 pages
+# Scrape data from the first 5 pages
 for page_number in range(1, 6):
     scrape_page()
     if page_number < 5:  # Avoid navigating past the last page
         try:
-            # Locate the pagination container
+            # Locate the pagination container (make sure this XPath is correct for your page structure)
             pagination_container = wait.until(EC.presence_of_element_located(
-                (By.XPATH, '//*[@id="root"]/div/div[4]/div[12]')
+                (By.XPATH, '//*[@class="DC_117_paginationTable"]')  # Adjusted to match the pagination container
             ))
 
-            # Locate the next page button within the container
+            # Locate the next page button based on the text for the page number (adjusted for the new class structure)
             next_page_button = pagination_container.find_element(
                 By.XPATH, f'.//div[contains(@class, "DC_117_pageTabs") and text()="{page_number + 1}"]'
             )
@@ -229,16 +233,16 @@ for page_number in range(1, 6):
 
             # Wait for a short duration to ensure the next page loads completely
             time.sleep(3)
-
         except Exception as e:
-            print(f"An error occurred while navigating to page {page_number + 1}: {e}")
+            print(f"Error navigating to the next page: {e}")
             break
 
-# Now, for each route, visit its link, scrape bus details and insert them into the database
-for entry in all_data:
-    route_data = get_bus_details(entry['routelink'])
-    entry['bus_details'] = route_data
-    insert_bus_details(entry)
+# Loop through all routes and extract bus details
+for route in all_data:
+    bus_details = get_bus_details(route['route_link'])
+    if bus_details:
+        route_data = {'route_name': route['route_name'], 'route_link': route['route_link'], 'bus_details': bus_details, 'state_name': route['state_name']}
+        insert_bus_details(route_data)
 
-# Close the WebDriver
+# Close the driver
 driver.quit()
