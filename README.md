@@ -1,4 +1,5 @@
-Red Bus Scraping Project
+**Red Bus Scraping Project**
+
 Overview:
 The Red Bus Project is a web scraping and visualization tool built with Selenium to extract bus information from the RedBus website. It stores the data in a MySQL database and provides an interactive visualization interface using Streamlit. The goal is to deliver insights into bus schedules, prices, ratings, and seat availability.
 
